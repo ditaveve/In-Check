@@ -14,15 +14,27 @@ def get_available_archives(username):
     response = requests.get(all_archives_url, headers=HEADERS)
     if response.status_code == 200:
         data = response.json()
-        return data
+        return data['archives']
     else:
         print("Failed to retrieve all archives.")
 
-def get_monthly_games(username, YYYY, MM):
-    monthly_arhive_url = f"{BASE_URL}/{username}/games/{YYYY}/{MM}"
+def get_monthly_games(monthly_arhive_url):
     response = requests.get(monthly_arhive_url, headers=HEADERS)
     if response.status_code == 200:
         data = response.json()
         return data
     else:
         print("Failed to retrieve monthly games.")
+
+def get_game_history(username, how_many_games):
+    all_archives = get_available_archives(username)[::-1]
+    all_games = []
+    while how_many_games:
+        for monthly_archive_url in all_archives:
+            monthly_archives = get_monthly_games(monthly_archive_url)['games']
+            for game in monthly_archives:
+                print(game)
+                how_many_games -= 1
+                if how_many_games <= 0:
+                    return
+    return all_games
