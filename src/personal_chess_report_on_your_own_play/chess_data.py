@@ -47,3 +47,12 @@ def get_user_profile(username):
         return data
     else:
         print("Failed to retrieve user profile.")
+
+def get_user_stats(username):
+    stats_url = f"{BASE_URL}/{username}/stats"
+    response = requests.get(stats_url, headers=HEADERS)
+    if response.status_code == 200:
+        data = response.json()
+        return data
+    else:
+        print("Failed to retrieve user stats.")
