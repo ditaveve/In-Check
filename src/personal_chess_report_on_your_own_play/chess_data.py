@@ -38,3 +38,12 @@ def get_game_history(username, how_many_games):
                 if how_many_games <= 0:
                     return
     return all_games
+
+def get_user_profile(username):
+    profile_url = f"{BASE_URL}/{username}"
+    response = requests.get(profile_url, headers=HEADERS)
+    if response.status_code == 200:
+        data = response.json()
+        return data
+    else:
+        print("Failed to retrieve user profile.")
