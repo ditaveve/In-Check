@@ -7,7 +7,10 @@ authors = [
     { name = "Diana Angheluta" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "dotenv>=0.9.9",
+    "requests>=2.34.2",
+]
 
 [project.scripts]
 personal-chess-report-on-your-own-play = "personal_chess_report_on_your_own_play:main"

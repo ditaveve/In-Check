@@ -18,8 +18,9 @@ def get_available_archives(username):
     data = response.json()
     return data['archives']
 
-def get_monthly_games_by_url(monthly_archive_url):
-    """Fetch all games from a single monthly archive URL."""
+def get_monthly_games(username, YYYY, MM):
+    """Fetch all games from a single monthly archive."""
+    monthly_archive_url = f"{BASE_URL}/{username}/games/{YYYY}/{MM}"
     response = requests.get(monthly_archive_url, headers=HEADERS)
     response.raise_for_status()
     data = response.json()
@@ -31,7 +32,9 @@ def get_user_game_history(username, how_many_games):
     all_games = []
     while how_many_games:
         for monthly_archive_url in all_archives:
-            monthly_archives = get_monthly_games_by_url(monthly_archive_url)['games']
+            response = requests.get(monthly_archive_url, headers=HEADERS)
+            response.raise_for_status()
+            monthly_archives = response.json()['games']
             for game in monthly_archives:
                 all_games.append(game)
                 how_many_games -= 1
@@ -52,6 +55,3 @@ def get_user_stats(username):
     response.raise_for_status()
     data = response.json()
     return data
-
-
-    
