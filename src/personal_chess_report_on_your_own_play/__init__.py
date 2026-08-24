@@ -1,2 +1,5 @@
 def main() -> None:
-    print("Hello from personal-chess-report-on-your-own-play!")
+    print("Hello")
+
+if __name__ == "__main__":
+    main()

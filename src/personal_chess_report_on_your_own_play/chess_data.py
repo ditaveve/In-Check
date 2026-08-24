@@ -1,33 +1,37 @@
 import requests
 import os
 from dotenv import load_dotenv
-
-BASE_URL="https://api.chess.com/pub/player"
+import json
 
 load_dotenv()
+
+BASE_URL="https://api.chess.com/pub/player"
 HEADERS = {
     "User-Agent": f"personal-chess-report-on-your-own-play (contact: {os.getenv("CONTACT_EMAIL")})"
 }
 
 def get_available_archives(username):
+    """Fetch the list of monthly archive URLs available for a Chess.com user."""
     all_archives_url = f"{BASE_URL}/{username}/games/archives"
     response = requests.get(all_archives_url, headers=HEADERS)
     response.raise_for_status()
     data = response.json()
     return data['archives']
 
-def get_monthly_games(monthly_arhive_url):
-    response = requests.get(monthly_arhive_url, headers=HEADERS)
+def get_monthly_games_by_url(monthly_archive_url):
+    """Fetch all games from a single monthly archive URL."""
+    response = requests.get(monthly_archive_url, headers=HEADERS)
     response.raise_for_status()
     data = response.json()
     return data
 
-def get_game_history(username, how_many_games):
+def get_user_game_history(username, how_many_games):
+    """Collect the user's most recent games, newest archive first, up to how_many_games."""
     all_archives = get_available_archives(username)[::-1]
     all_games = []
     while how_many_games:
         for monthly_archive_url in all_archives:
-            monthly_archives = get_monthly_games(monthly_archive_url)['games']
+            monthly_archives = get_monthly_games_by_url(monthly_archive_url)['games']
             for game in monthly_archives:
                 all_games.append(game)
                 how_many_games -= 1
@@ -48,3 +52,6 @@ def get_user_stats(username):
     response.raise_for_status()
     data = response.json()
     return data
+
+
+    
