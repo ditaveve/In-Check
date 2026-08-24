@@ -1,0 +1,17 @@
+[project]
+name = "personal-chess-report-on-your-own-play"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Diana Angheluta" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+personal-chess-report-on-your-own-play = "personal_chess_report_on_your_own_play:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
