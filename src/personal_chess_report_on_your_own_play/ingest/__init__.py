@@ -1,5 +1,4 @@
+from . import chess_data
+
 def main() -> None:
     print("Hello")
-
-if __name__ == "__main__":
-    main()

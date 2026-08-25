@@ -1,7 +1,8 @@
 import requests
 import os
 from dotenv import load_dotenv
-import json
+import io
+import chess.pgn
 
 load_dotenv()
 
@@ -30,16 +31,15 @@ def get_user_game_history(username, how_many_games):
     """Collect the user's most recent games, newest archive first, up to how_many_games."""
     all_archives = get_available_archives(username)[::-1]
     all_games = []
-    while how_many_games:
-        for monthly_archive_url in all_archives:
-            response = requests.get(monthly_archive_url, headers=HEADERS)
-            response.raise_for_status()
-            monthly_archives = response.json()['games']
-            for game in monthly_archives:
-                all_games.append(game)
-                how_many_games -= 1
-                if how_many_games <= 0:
-                    return all_games
+    for monthly_archive_url in all_archives:
+        response = requests.get(monthly_archive_url, headers=HEADERS)
+        response.raise_for_status()
+        monthly_archives = response.json()['games']
+        for game in monthly_archives:
+            all_games.append(game)
+            how_many_games -= 1
+            if how_many_games <= 0:
+                return all_games
     return all_games
 
 def get_user_profile(username):
@@ -55,3 +55,8 @@ def get_user_stats(username):
     response.raise_for_status()
     data = response.json()
     return data
+
+def get_pgn_game(game):
+    pgn = io.StringIO(game)
+    game_pgn = chess.pgn.read_game(pgn)
+    return game_pgn
