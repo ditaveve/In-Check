@@ -91,10 +91,13 @@ class Game:
             timer = parallel_move.clock()
             board.push(move)
             material_score = get_material_score(str(board), self.color_played)
-            data_piece = {'timer': timer,
-                          'move_turn': move_turn,
-                          'material_score': material_score,
-                          'move': move
-                          }
+            data_piece = { self.game_id:
+                            {'timer': timer,
+                            'move_turn': move_turn,
+                            'material_score': material_score,
+                            'move_no': self.counter,
+                            'move': san
+                            }
+                        }
             data.append(data_piece)
         return data
