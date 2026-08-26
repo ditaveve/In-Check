@@ -62,6 +62,9 @@ def get_opponent_rating(game_pgn, color_played):
         return game_pgn.headers['BlackElo']
     return game_pgn.headers['WhiteElo']
 
+def get_total_plies(game_pgn):
+    return len(list(game_pgn.mainline_moves()))
+
 class Game:
     def __init__(self, pgn, raw_game, username):
         self.pgn = pgn
@@ -76,28 +79,28 @@ class Game:
         self.time_class = get_time_class(raw_game)
         self.user_rating = get_user_rating(pgn, self.color_played)
         self.opponent_rating = get_opponent_rating(pgn, self.color_played)
+        self.total_plies = get_total_plies(self.pgn)
 
-        self.counter = 0
 
     def analyse_game(self):
+        counter = 0
         board = self.pgn.board()
         parallel_move = self.pgn.game()
         data = []
         for move in self.pgn.mainline_moves():
-            self.counter += 1
+            counter += 1
             move_turn = "white" if parallel_move.turn() else "black"
             san = board.san(move)
             parallel_move = parallel_move.next()
             timer = parallel_move.clock()
             board.push(move)
             material_score = get_material_score(str(board), self.color_played)
-            data_piece = { self.game_id:
-                            {'timer': timer,
-                            'move_turn': move_turn,
-                            'material_score': material_score,
-                            'move_no': self.counter,
+            data_piece =    {'game_id': self.game_id,
+                            'clock_remaining': timer,
+                            'color': move_turn,
+                            'material_balance': material_score,
+                            'ply_number': counter,
                             'move': san
                             }
-                        }
             data.append(data_piece)
         return data
