@@ -25,7 +25,7 @@ def get_user_result(game_pgn, color_played):
             return "loss"
         
 def get_game_date(game_pgn):
-    return game_pgn.headers['Date']
+    return game_pgn.headers['Date'].replace('.', '-')
 
 def get_time_control(game_pgn):
     return game_pgn.headers['TimeControl']
@@ -64,6 +64,7 @@ def get_opponent_rating(game_pgn, color_played):
 
 def get_total_plies(game_pgn):
     return len(list(game_pgn.mainline_moves()))
+
 
 class Game:
     def __init__(self, pgn, raw_game, username):
@@ -104,3 +105,4 @@ class Game:
                             }
             data.append(data_piece)
         return data
+    
