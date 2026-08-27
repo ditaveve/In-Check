@@ -69,6 +69,7 @@ def get_total_plies(game_pgn):
 class Game:
     def __init__(self, pgn, raw_game, username):
         self.pgn = pgn
+        self.player_username = username
         self.eco = get_game_eco(self.pgn)
         self.color_played = get_user_color(self.pgn, username)
         self.result = get_user_result(pgn, self.color_played)
