@@ -1,4 +1,7 @@
 import chess.pgn
+import chess
+import chess.engine
+import shutil
 
 def get_game_eco(game_pgn):
     return game_pgn.headers['ECO']
@@ -84,26 +87,31 @@ class Game:
         self.total_plies = get_total_plies(self.pgn)
 
 
-    def analyse_game(self):
+    def walk_through(self):
         counter = 0
         board = self.pgn.board()
         parallel_move = self.pgn.game()
         data = []
-        for move in self.pgn.mainline_moves():
-            counter += 1
-            move_turn = "white" if parallel_move.turn() else "black"
-            san = board.san(move)
-            parallel_move = parallel_move.next()
-            timer = parallel_move.clock()
-            board.push(move)
-            material_score = get_material_score(str(board), self.color_played)
-            data_piece =    {'game_id': self.game_id,
-                            'clock_remaining': timer,
-                            'color': move_turn,
-                            'material_balance': material_score,
-                            'ply_number': counter,
-                            'move': san
-                            }
-            data.append(data_piece)
+        with chess.engine.SimpleEngine.popen_uci(shutil.which("stockfish")) as engine:
+            for move in self.pgn.mainline_moves():
+                counter += 1
+                move_turn = "white" if parallel_move.turn() else "black"
+                san = board.san(move)
+                parallel_move = parallel_move.next()
+                timer = parallel_move.clock()
+                board.push(move)
+                info = engine.analyse(board, chess.engine.Limit(depth=15))
+                material_score = get_material_score(str(board), self.color_played)
+                data_piece =    {'game_id': self.game_id,
+                                'clock_remaining': timer,
+                                'color': move_turn,
+                                'material_balance': material_score,
+                                'ply_number': counter,
+                                'move': san,
+                                'engine_eval': info["score"].white().score(mate_score=10000)
+                                }
+                data.append(data_piece)
         return data
+    
+        
     
