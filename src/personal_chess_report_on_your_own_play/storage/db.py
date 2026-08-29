@@ -35,9 +35,6 @@ con.execute("""
     )
 """)
 
-con.execute("ALTER TABLE moves ADD COLUMN IF NOT EXISTS prev_eval " \
-            "DOUBLE DEFAULT 0")
-
 def insert_game_moves(analysed_game_data):
     local_con = con.cursor()
     prev_eval = None
@@ -66,11 +63,16 @@ def insert_user_games(user):
             game.opponent_rating, game.result, game.eco, game.total_plies, 'pending']
         )
     
-def show_games_db():
-    con.sql("SELECT * FROM games").show()
+def show_games_db(username):
+    con.sql("SELECT * FROM games WHERE tracked_username = ?", params=[username]).show()
 
-def show_moves_db():
-    con.sql("SELECT * FROM moves").show()
+def show_moves_db(username):
+    con.sql('''
+        SELECT m.*
+        FROM moves m
+        JOIN games g ON m.game_id = g.game_id
+        WHERE g.tracked_username = ?
+    ''', params=[username]).show()
 
 def delete_games_db():
     con.sql("DROP TABLE games")
@@ -78,27 +80,29 @@ def delete_games_db():
 def delete_moves_db():
     con.sql("DROP TABLE moves")
 
-def win_rate_as_white():
+def win_rate_as_white(username):
     con.sql( '''
-        SELECT player_color, 
+        SELECT player_color,
                 COUNT(*) AS total_games,
                 SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins,
                 SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate
         FROM games
+        WHERE tracked_username = ?
         GROUP BY player_color
-    ''').show()
+    ''', params=[username]).show()
 
-def win_rate_by_opening():
+def win_rate_by_opening(username):
     con.sql( '''
-        SELECT eco, 
+        SELECT eco,
                 player_color,
                 COUNT(*) AS total_games,
                 SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins,
                 SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate
         FROM games
+        WHERE tracked_username = ?
         GROUP BY eco, player_color
         HAVING COUNT(*) >= 5
-    ''').show()
+    ''', params=[username]).show()
 
 def games_still_pending():
     rows = con.sql("SELECT game_id FROM games WHERE analysis_status = 'pending' ").fetchall()
@@ -107,6 +111,12 @@ def games_still_pending():
 def update_analysis_state(game_id):
     con.execute("UPDATE games SET analysis_status = 'complete' WHERE game_id = ?", [game_id])
 
+# engine_eval/prev_eval are converted from mate scores using mate_score=10000 in game.py,
+# scaled down by moves-to-mate (e.g. mate in 3 -> 9997), so real mate scores land in
+# [9000, 10000] rather than exactly at 10000. Excluding |eval| >= 9000 drops mate-transition
+# rows (whose cp_loss is a meaningless artifact of that constant) without touching real evals.
+MATE_EVAL_THRESHOLD = 9000
+
 def biggest_blunders_in_game(game_id):
     con.sql(
         """
@@ -114,20 +124,33 @@ def biggest_blunders_in_game(game_id):
         FROM moves m
         JOIN games g ON m.game_id = g.game_id
         WHERE m.color = g.player_color AND m.game_id = ?
+            AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
         ORDER BY m.cp_loss DESC
         LIMIT 10
         """,
-        params=[game_id]
+        params=[game_id, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]
     ).show()
 
-def biggest_blunders():
+def biggest_blunders(username):
     con.sql(
         """
         SELECT m.game_id, m.ply_number, m.move, m.cp_loss
         FROM moves m
         JOIN games g ON m.game_id = g.game_id
-        WHERE m.color = g.player_color
+        WHERE m.color = g.player_color AND g.tracked_username = ?
+            AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
         ORDER BY m.cp_loss DESC
         LIMIT 10
-        """
+        """,
+        params=[username, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]
     ).show()
+
+def avg_cp_loss_by_color(username):
+    con.sql( '''
+        SELECT g.player_color, AVG(m.cp_loss) AS avg_cp_loss
+        FROM moves m
+        JOIN games g ON m.game_id = g.game_id
+        WHERE m.color = g.player_color AND g.tracked_username = ?
+            AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
+        GROUP BY g.player_color
+    ''', params=[username, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]).show()
