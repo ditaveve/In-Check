@@ -25,10 +25,53 @@ class PlayerComparison:
 
         return comparison
 
+    def opening_matchups(self, min_frequency=0.15):
+        # Same-color comparison (white vs white, black vs black) doesn't reflect how a real
+        # game goes -- it never tells you whether the *opponent* can actually handle what you
+        # throw at them. What matters is cross-color: what one player plays as White against
+        # what the other player has actually faced as Black, in both directions. A family the
+        # White side leans on but the Black side has zero experience with is the real signal;
+        # how often the Black side *also* plays that family as White is irrelevant here.
+        rows_a = {
+            (color, family): freq
+            for color, family, n, freq in db.opening_frequency(self.username_a, quiet=True)
+        }
+        rows_b = {
+            (color, family): freq
+            for color, family, n, freq in db.opening_frequency(self.username_b, quiet=True)
+        }
+
+        def matchup(white_user, white_rows, black_user, black_rows):
+            white_families = sorted(
+                ((family, freq) for (color, family), freq in white_rows.items()
+                 if color == 'white' and freq >= min_frequency),
+                key=lambda item: item[1], reverse=True
+            )
+            print(f"=== {white_user} as White vs {black_user} as Black ===")
+            if not any(color == 'black' for color, _ in black_rows):
+                print(f"  (not enough {black_user} Black games to say anything reliable)")
+                return []
+
+            results = []
+            for family, white_freq in white_families:
+                black_freq = black_rows.get(('black', family))
+                results.append((family, white_freq, black_freq))
+                if black_freq is None:
+                    print(f"  family {family}: {white_user} plays it {white_freq:.0%} as White -- {black_user} has never played Black against it")
+                else:
+                    print(f"  family {family}: {white_user} plays it {white_freq:.0%} as White -- {black_user} has faced it {black_freq:.0%} of their Black games")
+            return results
+
+        a_vs_b = matchup(self.username_a, rows_a, self.username_b, rows_b)
+        b_vs_a = matchup(self.username_b, rows_b, self.username_a, rows_a)
+
+        return {
+            f"{self.username_a}_white_vs_{self.username_b}_black": a_vs_b,
+            f"{self.username_b}_white_vs_{self.username_a}_black": b_vs_a,
+        }
+
     def biggest_blunders(self):
-        # no shared key between the two players' blunder lists (a move in one player's
-        # game has no counterpart in the other's), so pair by rank instead: 1st-worst
-        # vs 1st-worst, 2nd-worst vs 2nd-worst, within each time_class.
+
         time_classes = sorted(
             set(db.time_classes_played(self.username_a)) | set(db.time_classes_played(self.username_b))
         )

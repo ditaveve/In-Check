@@ -106,6 +106,37 @@ def win_rate_by_opening(username):
         HAVING COUNT(*) >= 5
     ''', params=[username]).show()
 
+def opening_frequency(username, quiet=False):
+    # Unlike the cp_loss/blunder metrics, opening choice is treated as one pool across all
+    # time_class values rather than split per time control -- players tend to carry the same
+    # repertoire across bullet/blitz/rapid, so splitting here would just fragment an already
+    # real signal into smaller, noisier per-time-control pieces instead of protecting against
+    # a genuine confound (which is what the split is for elsewhere).
+    # Grouped by ECO *family* (the leading letter: A/B/C/D/E, ECO's own broad classification)
+    # rather than full ECO code -- individual codes like B07/B08/B48 split real overlap between
+    # two players into a dozen near-empty rows that each look unremarkable on their own, when
+    # together they're a genuine "plays this family often" signal.
+    # SUM(COUNT(*)) OVER (PARTITION BY ...) runs after the GROUP BY has already collapsed
+    # rows into one per (player_color, family): it sums those per-family counts back up
+    # within each player_color partition, giving each row's own share's denominator without
+    # a second query.
+    # QUALIFY drops whole player_color buckets with too few games to make any percentage
+    # meaningful -- otherwise a bucket with 1 total game shows a spurious "100%".
+    rel = con.sql('''
+        SELECT player_color,
+                LEFT(eco, 1) AS eco_family,
+                COUNT(*) AS games_in_family,
+                COUNT(*) * 1.0 / SUM(COUNT(*)) OVER (PARTITION BY player_color) AS frequency
+        FROM games
+        WHERE tracked_username = ?
+        GROUP BY player_color, LEFT(eco, 1)
+        QUALIFY SUM(COUNT(*)) OVER (PARTITION BY player_color) >= 5
+        ORDER BY player_color, frequency DESC
+    ''', params=[username])
+    if not quiet:
+        rel.show()
+    return rel.fetchall()
+
 def games_still_pending():
     rows = con.sql("SELECT game_id FROM games WHERE analysis_status = 'pending' ").fetchall()
     return [row[0] for row in rows]
@@ -120,11 +151,14 @@ def time_classes_played(username):
 def update_analysis_state(game_id):
     con.execute("UPDATE games SET analysis_status = 'complete' WHERE game_id = ?", [game_id])
 
-# engine_eval/prev_eval are converted from mate scores using mate_score=10000 in game.py,
-# scaled down by moves-to-mate (e.g. mate in 3 -> 9997), so real mate scores land in
-# [9000, 10000] rather than exactly at 10000. Excluding |eval| >= 9000 drops mate-transition
-# rows (whose cp_loss is a meaningless artifact of that constant) without touching real evals.
-MATE_EVAL_THRESHOLD = 9000
+# Once a position is already decisively won/lost, further eval swings aren't real blunders:
+# they're either mate-score artifacts (engine_eval/prev_eval converted from mate_score=10000
+# in game.py, scaled by moves-to-mate) or, as confirmed by tracing an actual game, shallow-depth
+# noise in dead-lost technical endgames (e.g. a bare king being shuffled toward stalemate/mate,
+# where the exact cp value swings wildly move to move without reflecting the move's quality).
+# Genuine blunders in this data have topped out under ~1300cp, so 2000 leaves headroom for a
+# real large blunder while cutting off both kinds of already-decided-position noise.
+DECISIVE_EVAL_THRESHOLD = 2000
 
 def biggest_blunders_in_game(game_id):
     con.sql(
@@ -137,13 +171,13 @@ def biggest_blunders_in_game(game_id):
         ORDER BY m.cp_loss DESC
         LIMIT 10
         """,
-        params=[game_id, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]
+        params=[game_id, DECISIVE_EVAL_THRESHOLD, DECISIVE_EVAL_THRESHOLD]
     ).show()
 
-def biggest_blunders(username, time_class):
+def biggest_blunders(username, time_class, quiet=False):
     # scoped to one time_class: pooling bullet and rapid into a single top-10 would let
     # bullet's naturally noisier play crowd out real blunders from slower time controls.
-    con.sql(
+    rel = con.sql(
         """
         SELECT m.game_id, m.ply_number, m.move, m.cp_loss
         FROM moves m
@@ -153,18 +187,24 @@ def biggest_blunders(username, time_class):
         ORDER BY m.cp_loss DESC
         LIMIT 10
         """,
-        params=[username, time_class, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]
-    ).show()
+        params=[username, time_class, DECISIVE_EVAL_THRESHOLD, DECISIVE_EVAL_THRESHOLD]
+    )
+    if not quiet:
+        rel.show()
+    return rel.fetchall()
 
-def avg_cp_loss_by_color(username):
-    con.sql( '''
+def avg_cp_loss_by_color(username, quiet=False):
+    rel = con.sql( '''
         SELECT g.time_class, g.player_color, AVG(m.cp_loss) AS avg_cp_loss
         FROM moves m
         JOIN games g ON m.game_id = g.game_id
         WHERE m.color = g.player_color AND g.tracked_username = ?
             AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
         GROUP BY g.time_class, g.player_color
-    ''', params=[username, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]).show()
+    ''', params=[username, DECISIVE_EVAL_THRESHOLD, DECISIVE_EVAL_THRESHOLD])
+    if not quiet:
+        rel.show()
+    return rel.fetchall()
 
 def cp_loss_by_time_pressure(username):
     # opp = the opponent's move immediately before this one (ply_number - 1 is always
@@ -187,4 +227,5 @@ def cp_loss_by_time_pressure(username):
         WHERE m.color = g.player_color AND g.tracked_username = ?
             AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
         GROUP BY g.time_class, time_bucket, clock_diff_bucket
-    ''', params=[username, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]).show()
+    ''', params=[username, DECISIVE_EVAL_THRESHOLD, DECISIVE_EVAL_THRESHOLD]).show()
+    return rel.fetchall()
