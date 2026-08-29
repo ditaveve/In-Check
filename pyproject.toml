@@ -16,7 +16,13 @@ dependencies = [
 
 [project.scripts]
 personal-chess-report-on-your-own-play = "personal_chess_report_on_your_own_play:main"
+check-pending-games = "personal_chess_report_on_your_own_play:check_pending"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

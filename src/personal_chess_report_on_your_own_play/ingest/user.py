@@ -1,7 +1,7 @@
 from . import chess_data
 from . import game
 
-HOW_MANY_GAMES = 10
+HOW_MANY_GAMES = 200
 
 class User:
     def __init__(self, username):

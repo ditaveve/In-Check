@@ -82,30 +82,39 @@ def delete_moves_db():
 
 def win_rate_as_white(username):
     con.sql( '''
-        SELECT player_color,
-                COUNT(*) AS total_games,
-                SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins,
-                SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate
-        FROM games
-        WHERE tracked_username = ?
-        GROUP BY player_color
-    ''', params=[username]).show()
-
-def win_rate_by_opening(username):
-    con.sql( '''
-        SELECT eco,
+        SELECT time_class,
                 player_color,
                 COUNT(*) AS total_games,
                 SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins,
                 SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate
         FROM games
         WHERE tracked_username = ?
-        GROUP BY eco, player_color
+        GROUP BY time_class, player_color
+    ''', params=[username]).show()
+
+def win_rate_by_opening(username):
+    con.sql( '''
+        SELECT time_class,
+                eco,
+                player_color,
+                COUNT(*) AS total_games,
+                SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins,
+                SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate
+        FROM games
+        WHERE tracked_username = ?
+        GROUP BY time_class, eco, player_color
         HAVING COUNT(*) >= 5
     ''', params=[username]).show()
 
 def games_still_pending():
     rows = con.sql("SELECT game_id FROM games WHERE analysis_status = 'pending' ").fetchall()
+    return [row[0] for row in rows]
+
+def time_classes_played(username):
+    rows = con.sql(
+        "SELECT DISTINCT time_class FROM games WHERE tracked_username = ?",
+        params=[username]
+    ).fetchall()
     return [row[0] for row in rows]
 
 def update_analysis_state(game_id):
@@ -131,26 +140,51 @@ def biggest_blunders_in_game(game_id):
         params=[game_id, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]
     ).show()
 
-def biggest_blunders(username):
+def biggest_blunders(username, time_class):
+    # scoped to one time_class: pooling bullet and rapid into a single top-10 would let
+    # bullet's naturally noisier play crowd out real blunders from slower time controls.
     con.sql(
         """
         SELECT m.game_id, m.ply_number, m.move, m.cp_loss
         FROM moves m
         JOIN games g ON m.game_id = g.game_id
-        WHERE m.color = g.player_color AND g.tracked_username = ?
+        WHERE m.color = g.player_color AND g.tracked_username = ? AND g.time_class = ?
             AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
         ORDER BY m.cp_loss DESC
         LIMIT 10
         """,
-        params=[username, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]
+        params=[username, time_class, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]
     ).show()
 
 def avg_cp_loss_by_color(username):
     con.sql( '''
-        SELECT g.player_color, AVG(m.cp_loss) AS avg_cp_loss
+        SELECT g.time_class, g.player_color, AVG(m.cp_loss) AS avg_cp_loss
         FROM moves m
         JOIN games g ON m.game_id = g.game_id
         WHERE m.color = g.player_color AND g.tracked_username = ?
             AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
-        GROUP BY g.player_color
+        GROUP BY g.time_class, g.player_color
+    ''', params=[username, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]).show()
+
+def cp_loss_by_time_pressure(username):
+    # opp = the opponent's move immediately before this one (ply_number - 1 is always
+    # the other color, since plies strictly alternate), giving their clock at the moment
+    # the player made this move.
+    con.sql('''
+        SELECT
+            g.time_class,
+            CASE WHEN m.clock_remaining < 30 THEN 'under 30s' ELSE 'everything else' END AS time_bucket,
+            CASE
+                WHEN opp.clock_remaining IS NULL THEN 'unknown'
+                WHEN m.clock_remaining < opp.clock_remaining THEN 'behind on clock'
+                ELSE 'ahead or even'
+            END AS clock_diff_bucket,
+            AVG(m.cp_loss) AS avg_cp_loss,
+            COUNT(*) AS total_moves
+        FROM moves m
+        JOIN games g ON m.game_id = g.game_id
+        LEFT JOIN moves opp ON opp.game_id = m.game_id AND opp.ply_number = m.ply_number - 1
+        WHERE m.color = g.player_color AND g.tracked_username = ?
+            AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
+        GROUP BY g.time_class, time_bucket, clock_diff_bucket
     ''', params=[username, MATE_EVAL_THRESHOLD, MATE_EVAL_THRESHOLD]).show()
