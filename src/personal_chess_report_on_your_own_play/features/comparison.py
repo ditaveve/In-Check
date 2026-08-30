@@ -88,5 +88,9 @@ class PlayerComparison:
                 a_str = f"{blunder_a[2]} ({blunder_a[3]:.0f}cp)" if blunder_a else "—"
                 b_str = f"{blunder_b[2]} ({blunder_b[3]:.0f}cp)" if blunder_b else "—"
                 print(f"  #{rank}  {self.username_a}: {a_str:<18} {self.username_b}: {b_str}")
+                if blunder_a and blunder_a[4]:
+                    print(f"        {self.username_a}'s line: {blunder_a[4]}")
+                if blunder_b and blunder_b[4]:
+                    print(f"        {self.username_b}'s line: {blunder_b[4]}")
 
         return comparison

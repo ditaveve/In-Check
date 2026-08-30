@@ -4,6 +4,7 @@ from .ingest import user
 from .ingest.user import User
 from .ingest.user import HOW_MANY_GAMES
 from .storage import db
+from .features.report import MatchupReport
 from concurrent.futures import ThreadPoolExecutor
 import os
 import time
@@ -40,20 +41,8 @@ def main() -> None:
     my_user, david_user = ingest_users_games(TRACKED_USERNAMES)
     analyse_pending_games([my_user, david_user])
 
-    print("List of all David's games:")
-    db.show_games_db(david_user.username)
+    MatchupReport(my_user.username, david_user.username).generate()
 
-
-    for u in (my_user, david_user):
-        for time_class in db.time_classes_played(u.username):
-            print(f"Biggest blunders of user {u.username} in {time_class}:")
-            db.biggest_blunders(u.username, time_class)
-
-    print("Average cp loss by color for user ditaveve")
-    db.avg_cp_loss_by_color(my_user.username)
-    print("Average cp loss by color for user david")
-    db.avg_cp_loss_by_color(david_user.username)
-    
     print(f"Took {time.perf_counter() - start:.2f}s")
 
 if __name__ == "__main__":

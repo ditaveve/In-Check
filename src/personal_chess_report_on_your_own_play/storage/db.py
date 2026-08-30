@@ -190,7 +190,7 @@ MIN_BLUNDER_THRESHOLD = 200
 def biggest_blunders_in_game(game_id):
     con.sql(
         """
-        SELECT m.game_id, m.ply_number, m.move, m.cp_loss
+        SELECT m.game_id, m.ply_number, m.move, m.cp_loss, m.punishment_line
         FROM moves m
         JOIN games g ON m.game_id = g.game_id
         WHERE m.color = g.player_color AND m.game_id = ?
@@ -206,7 +206,7 @@ def biggest_blunders(username, time_class, quiet=False):
     # bullet's naturally noisier play crowd out real blunders from slower time controls.
     rel = con.sql(
         """
-        SELECT m.game_id, m.ply_number, m.move, m.cp_loss
+        SELECT m.game_id, m.ply_number, m.move, m.cp_loss, m.punishment_line
         FROM moves m
         JOIN games g ON m.game_id = g.game_id
         WHERE m.color = g.player_color AND g.tracked_username = ? AND g.time_class = ?
@@ -237,7 +237,7 @@ def cp_loss_by_time_pressure(username):
     # opp = the opponent's move immediately before this one (ply_number - 1 is always
     # the other color, since plies strictly alternate), giving their clock at the moment
     # the player made this move.
-    con.sql('''
+    rel = con.sql('''
         SELECT
             g.time_class,
             CASE WHEN m.clock_remaining < 30 THEN 'under 30s' ELSE 'everything else' END AS time_bucket,
@@ -254,5 +254,6 @@ def cp_loss_by_time_pressure(username):
         WHERE m.color = g.player_color AND g.tracked_username = ?
             AND ABS(m.engine_eval) < ? AND ABS(m.prev_eval) < ?
         GROUP BY g.time_class, time_bucket, clock_diff_bucket
-    ''', params=[username, DECISIVE_EVAL_THRESHOLD, DECISIVE_EVAL_THRESHOLD]).show()
+    ''', params=[username, DECISIVE_EVAL_THRESHOLD, DECISIVE_EVAL_THRESHOLD])
+    rel.show()
     return rel.fetchall()
