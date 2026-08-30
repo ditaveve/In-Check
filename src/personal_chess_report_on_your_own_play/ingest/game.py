@@ -68,6 +68,8 @@ def get_opponent_rating(game_pgn, color_played):
 def get_total_plies(game_pgn):
     return len(list(game_pgn.mainline_moves()))
 
+ONE_TIME_INSTRUCTION = True
+
 
 class Game:
     def __init__(self, pgn, raw_game, username):
@@ -88,6 +90,7 @@ class Game:
 
 
     def walk_through(self):
+        global ONE_TIME_INSTRUCTION
         counter = 0
         board = self.pgn.board()
         parallel_move = self.pgn.game()
@@ -101,14 +104,23 @@ class Game:
                 timer = parallel_move.clock()
                 board.push(move)
                 info = engine.analyse(board, chess.engine.Limit(depth=15))
+                if ONE_TIME_INSTRUCTION == True:
+                    print(info)
+                    ONE_TIME_INSTRUCTION = False
                 material_score = get_material_score(str(board), self.color_played)
+                pv_board = board.copy()
+                pv_san = []
+                for pv_move in info.get('pv', []):
+                    pv_san.append(pv_board.san(pv_move))
+                    pv_board.push(pv_move)
                 data_piece =    {'game_id': self.game_id,
                                 'clock_remaining': timer,
                                 'color': move_turn,
                                 'material_balance': material_score,
                                 'ply_number': counter,
                                 'move': san,
-                                'engine_eval': info["score"].white().score(mate_score=10000)
+                                'engine_eval': info["score"].white().score(mate_score=10000),
+                                'punishment_line': ' '.join(pv_san)
                                 }
                 data.append(data_piece)
         return data

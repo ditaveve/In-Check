@@ -2,6 +2,7 @@ import duckdb
 
 con = duckdb.connect("data/chessmatchup.duckdb") 
 
+
 con.execute("""
     CREATE TABLE IF NOT EXISTS games (
         game_id VARCHAR PRIMARY KEY,
@@ -31,9 +32,15 @@ con.execute("""
         engine_eval DOUBLE,
         prev_eval DOUBLE,
         cp_loss DOUBLE,
+        punishment_line STRING,
         PRIMARY KEY (game_id, ply_number)
     )
 """)
+
+con.execute("ALTER TABLE moves ADD COLUMN IF NOT EXISTS punishment_line STRING")
+
+#con.execute("UPDATE games SET analysis_status = 'pending' WHERE game_id = '3e263351-8a7a-11f1-a763-a4cd8501000f';")
+
 
 def insert_game_moves(analysed_game_data):
     local_con = con.cursor()
@@ -45,10 +52,23 @@ def insert_game_moves(analysed_game_data):
             cp_loss = prev_eval - move['engine_eval']
         else:
             cp_loss = move['engine_eval'] - prev_eval
+
+        # Only keep the punishment_line for actual blunders: below MIN_BLUNDER_THRESHOLD it's
+        # noise, and above DECISIVE_EVAL_THRESHOLD it's a mate-score/already-decided-position
+        # artifact (same reasoning as the read-time filters on cp_loss elsewhere) -- neither
+        # is a real mistake worth an engine-line explanation.
+        is_real_blunder = (
+            cp_loss is not None and cp_loss >= MIN_BLUNDER_THRESHOLD
+            and abs(move['engine_eval']) < DECISIVE_EVAL_THRESHOLD
+            and abs(prev_eval) < DECISIVE_EVAL_THRESHOLD
+        )
+        punishment_line = move['punishment_line'] if is_real_blunder else None
+
         local_con.execute(
-            "INSERT INTO moves VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-            [move['game_id'], move['clock_remaining'], move['color'], move['material_balance'], 
-            move['ply_number'], move['move'], move['engine_eval'], prev_eval, cp_loss]
+            "INSERT INTO moves VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            [move['game_id'], move['clock_remaining'], move['color'], move['material_balance'],
+            move['ply_number'], move['move'], move['engine_eval'], prev_eval, cp_loss,
+            punishment_line]
         )
         prev_eval = move['engine_eval']
 
@@ -159,6 +179,13 @@ def update_analysis_state(game_id):
 # Genuine blunders in this data have topped out under ~1300cp, so 2000 leaves headroom for a
 # real large blunder while cutting off both kinds of already-decided-position noise.
 DECISIVE_EVAL_THRESHOLD = 2000
+
+# Standard chess-analysis convention treats ~200cp+ loss as "blunder" territory (roughly:
+# inaccuracy 50-99cp, mistake 100-199cp, blunder 200cp+). Checked against this data: ~7% of
+# moves clear 200cp, ~3.8% clear 300cp -- a selective-but-not-vanishingly-rare cut, consistent
+# with typical amateur online blunder rates. Below this, storing a punishment_line is just
+# noise for a move that wasn't actually a meaningful mistake.
+MIN_BLUNDER_THRESHOLD = 200
 
 def biggest_blunders_in_game(game_id):
     con.sql(
